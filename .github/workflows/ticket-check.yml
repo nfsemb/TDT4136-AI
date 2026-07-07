@@ -1,0 +1,79 @@
+name: Billettsjekk Frognerstadion
+
+# Sjekker jevnlig om billetter til Frognerstadion har blitt lagt ut, og
+# oppretter en GitHub-issue (som gir deg e-postvarsel) når de er tilgjengelige.
+
+on:
+  schedule:
+    # Hvert 15. minutt. Tidene er i UTC, og GitHub kan forsinke planlagte
+    # kjøringer med flere minutter ved høy last.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}  # gjør det mulig å kjøre manuelt fra Actions-fanen
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: billettsjekk
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hent kode
+        uses: actions/checkout@v4
+
+      - name: Sett opp Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sjekk billettstatus
+        id: check
+        run: python .github/scripts/check_tickets.py
+
+      - name: Opprett varsel-issue hvis billetter er tilgjengelige
+        if: steps.check.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REASON: ${{ steps.check.outputs.reason }}
+          URL: ${{ steps.check.outputs.checked_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          # Sørg for at etiketten finnes (idempotent).
+          gh label create "billett-varsel" --repo "$REPO" \
+            --color "FFB000" --description "Automatisk varsel om billetter" 2>/dev/null || true
+
+          # Ikke spam: opprett bare hvis det ikke allerede finnes en åpen varsel-issue.
+          existing=$(gh issue list --repo "$REPO" --state open --label "billett-varsel" --json number --jq 'length')
+          if [ "$existing" != "0" ]; then
+            echo "Åpen varsel-issue finnes allerede – hopper over for å unngå duplikater."
+            exit 0
+          fi
+
+          body=$(cat <<EOF
+          ## 🎟️ Billetter til Frognerstadion kan være tilgjengelige nå!
+
+          Den automatiske sjekken oppdaget en endring på billettsiden.
+
+          - **Side:** $URL
+          - **Vurdering:** $REASON
+          - **Kjøring:** $RUN_URL
+
+          👉 Gå til siden og sjekk / kjøp billetter så fort som mulig.
+
+          _Denne issuen ble opprettet automatisk. Lukk den når du har handlet – da vil et nytt varsel kunne opprettes senere hvis situasjonen endrer seg igjen._
+          EOF
+          )
+
+          gh issue create --repo "$REPO" \
+            --title "🎟️ Billetter til Frognerstadion kan være tilgjengelige!" \
+            --label "billett-varsel" \
+            --body "$body"
+
+          echo "Varsel-issue opprettet."

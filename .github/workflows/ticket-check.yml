@@ -8,7 +8,12 @@ on:
     # Hvert 5. minutt (raskeste GitHub tillater for planlagte kjøringer).
     # Tidene er i UTC, og GitHub kan forsinke kjøringer ved høy last.
     - cron: "*/5 * * * *"
-  workflow_dispatch: {}  # gjør det mulig å kjøre manuelt fra Actions-fanen
+  workflow_dispatch:
+    inputs:
+      test_varsel:
+        description: "Send et TEST-varsel (mobil-push + issue) for å verifisere kanalene"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,3 +97,44 @@ jobs:
             --body "$body"
 
           echo "Varsel-issue opprettet."
+
+      - name: Testvarsel (manuell verifisering av kanaler)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_varsel }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          URL: https://www.fotballfesten.no/frognerstadion
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NTFY_TOPIC: ${{ vars.NTFY_TOPIC || 'frognerstadion-billett-9k3mq7zt' }}
+        run: |
+          set -euo pipefail
+
+          echo "Sender TEST-push til ntfy-emne: $NTFY_TOPIC"
+          curl -sS --max-time 20 \
+            -H "Title: TEST - Billettvarsel Frognerstadion" \
+            -H "Priority: default" \
+            -H "Tags: test_tube,soccer" \
+            -H "Click: $URL" \
+            -d "Dette er en testmelding. Ser du denne, funker mobilvarslene. Ekte varsel kommer nar billetter blir tilgjengelige." \
+            "https://ntfy.sh/$NTFY_TOPIC"
+          echo
+
+          # TEST-issue får IKKE etiketten billett-varsel, slik at den ikke
+          # blokkerer opprettelsen av et ekte varsel senere.
+          body=$(cat <<EOF
+          ## 🧪 TEST: billettvarsel-oppsettet fungerer
+
+          Dette er en automatisk **testissue** for å bekrefte at e-postvarslingen fungerer.
+          Fikk du e-post om denne issuen, er e-postkanalen i orden.
+
+          - **Kjøring:** $RUN_URL
+
+          Du kan trygt lukke denne. Et ekte varsel (med etiketten \`billett-varsel\`) opprettes automatisk når billetter til $URL blir tilgjengelige.
+          EOF
+          )
+
+          gh issue create --repo "$REPO" \
+            --title "🧪 TEST: billettvarsel-oppsettet fungerer" \
+            --body "$body"
+
+          echo "TEST-issue opprettet."

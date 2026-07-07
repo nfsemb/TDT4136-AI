@@ -5,9 +5,9 @@ name: Billettsjekk Frognerstadion
 
 on:
   schedule:
-    # Hvert 15. minutt. Tidene er i UTC, og GitHub kan forsinke planlagte
-    # kjøringer med flere minutter ved høy last.
-    - cron: "*/15 * * * *"
+    # Hvert 5. minutt (raskeste GitHub tillater for planlagte kjøringer).
+    # Tidene er i UTC, og GitHub kan forsinke kjøringer ved høy last.
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}  # gjør det mulig å kjøre manuelt fra Actions-fanen
 
 permissions:
@@ -42,6 +42,11 @@ jobs:
           REASON: ${{ steps.check.outputs.reason }}
           URL: ${{ steps.check.outputs.checked_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # Mobil-push via ntfy.sh. Abonner på dette emnet i ntfy-appen for å få
+          # varsel på mobilen. Kan overstyres med en repo-variabel NTFY_TOPIC
+          # (Settings → Secrets and variables → Actions → Variables) hvis du
+          # vil ha et privat/hemmelig emne.
+          NTFY_TOPIC: ${{ vars.NTFY_TOPIC || 'frognerstadion-billett-9k3mq7zt' }}
         run: |
           set -euo pipefail
 
@@ -55,6 +60,16 @@ jobs:
             echo "Åpen varsel-issue finnes allerede – hopper over for å unngå duplikater."
             exit 0
           fi
+
+          # Push-varsel til mobil (ntfy). Feiler stille slik at issue-varselet
+          # uansett opprettes selv om ntfy skulle være utilgjengelig.
+          curl -sS --max-time 20 \
+            -H "Title: Billetter til Frognerstadion!" \
+            -H "Priority: urgent" \
+            -H "Tags: soccer,ticket,tada" \
+            -H "Click: $URL" \
+            -d "$REASON Gå og kjøp nå: $URL" \
+            "https://ntfy.sh/$NTFY_TOPIC" >/dev/null || echo "ntfy-varsel feilet (ignorert)."
 
           body=$(cat <<EOF
           ## 🎟️ Billetter til Frognerstadion kan være tilgjengelige nå!

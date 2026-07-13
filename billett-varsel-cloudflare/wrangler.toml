@@ -1,0 +1,23 @@
+name = "billett-varsel-frognerstadion"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Cron Trigger: kjør hvert minutt. Cloudflare kjører disse punktlig og
+# pålitelig (til forskjell fra GitHub Actions, som strupet planlagte
+# kjøringer til omtrent én gang i timen).
+[triggers]
+crons = ["* * * * *"]
+
+# KV brukes til å huske forrige status, slik at vi kun varsler ved overgang
+# til "tilgjengelig" – ikke hvert minutt.
+# Opprett først:  wrangler kv namespace create BILLETT
+# Lim deretter inn id-en du får:
+[[kv_namespaces]]
+binding = "BILLETT"
+id = "FYLL_INN_KV_NAMESPACE_ID"
+
+[vars]
+# ntfy-emne du abonnerer på i ntfy-appen.
+NTFY_TOPIC = "frognerstadion-billett-9k3mq7zt"
+# Valgfritt: sett en e-postadresse for å få varsel på e-post I TILLEGG til push.
+# NTFY_EMAIL = "din@epost.no"
